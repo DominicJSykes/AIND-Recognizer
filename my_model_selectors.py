@@ -67,6 +67,9 @@ class SelectorBIC(ModelSelector):
     http://www2.imm.dtu.dk/courses/02433/doc/ch6_slides.pdf
     Bayesian information criteria: BIC = -2 * logL + p * logN
     """
+    
+    """where L is the likelihood of the fitted model, p is the number of parameters, and N is the number of data
+    points."""
 
     def select(self):
         """ select the best model for self.this_word based on
@@ -74,8 +77,25 @@ class SelectorBIC(ModelSelector):
 
         :return: GaussianHMM object
         """
+        
         warnings.filterwarnings("ignore", category=DeprecationWarning)
-
+        warnings.filterwarnings("ignore", category=RuntimeWarning)
+        
+        best_score = float("inf")
+        best_model = None    
+        for n in range(self.min_n_components,self.max_n_components + 1):
+            try:
+                model = GaussianHMM(n_components=n,n_iter=1000,random_state=self.random_state).fit(self.X,self.lengths)
+                logL = model.score(self.X,self.lengths)
+                logN = math.log(len(self.X))
+                p = n * n + 2 * n * len(self.X[0]) - 1
+                BIC = -2 * logL + p * logN
+                if BIC < best_score:
+                    best_model = model
+                    best_score = BIC
+            except:
+                pass        
+        return best_model
         # TODO implement model selection based on BIC scores
         raise NotImplementedError
 
@@ -90,8 +110,30 @@ class SelectorDIC(ModelSelector):
     '''
 
     def select(self):
+        
         warnings.filterwarnings("ignore", category=DeprecationWarning)
-
+        warnings.filterwarnings("ignore", category=RuntimeWarning)
+        
+        best_score = float("-inf")
+        best_model = None                     
+        other_words = self.hwords.copy()
+        del other_words[self.this_word]
+        words = [self.hwords[word] for word in other_words]
+        for n in range(self.min_n_components,self.max_n_components + 1):
+            antiLogL = 0.0
+            wc = 0
+            try:
+                model = GaussianHMM(n_components=n,n_iter=1000,random_state=self.random_state).fit(self.X,self.lengths)
+                logL = model.score(self.X,self.lengths)
+            except:
+                continue 
+            p = n * n + 2 * n * len(self.X) - 1
+            DIC =  logL - np.mean(sum([model.score(self.hwords[word][0],self.hwords[word][1]) 
+                   for word in other_words]))
+            if DIC > best_score:
+                best_model = model
+                best_score = DIC       
+        return best_model
         # TODO implement model selection based on DIC scores
         raise NotImplementedError
 
@@ -103,6 +145,34 @@ class SelectorCV(ModelSelector):
 
     def select(self):
         warnings.filterwarnings("ignore", category=DeprecationWarning)
-
+        warnings.filterwarnings("ignore", category=RuntimeWarning)
+        
+        best_score = float("-inf")
+        best_model = None
+        if len(self.sequences) < 3:
+            split_method = KFold(n_splits=2)
+        else:
+            split_method = KFold()
+            print ("splits = 3")
+        for n in range(self.min_n_components,self.max_n_components + 1):   
+            score = 0
+            count = 0
+            for cv_train_idx, cv_test_idx in split_method.split(self.sequences):
+                train, train_lengths = combine_sequences(cv_train_idx, self.sequences)
+                test, test_lengths = combine_sequences(cv_test_idx, self.sequences)                      
+                try:
+                    trained_model = (GaussianHMM(n_components=n,n_iter=1000,random_state=self.random_state)
+                                    .fit(train,train_lengths))
+                    score += trained_model.score(test,test_lengths)
+                    count += 1
+                except:
+                    pass 
+            if count > 0:
+                avg_score = score / count
+                if avg_score > best_score:
+                    best_model = GaussianHMM(n_components=n,n_iter=1000).fit(self.X,self.lengths)
+                    best_score = avg_score
+        return best_model
+    
         # TODO implement model selection using CV
         raise NotImplementedError
