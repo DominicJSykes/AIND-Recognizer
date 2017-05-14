@@ -153,25 +153,27 @@ class SelectorCV(ModelSelector):
             split_method = KFold(n_splits=2)
         else:
             split_method = KFold()
-            print ("splits = 3")
         for n in range(self.min_n_components,self.max_n_components + 1):   
             score = 0
             count = 0
-            for cv_train_idx, cv_test_idx in split_method.split(self.sequences):
-                train, train_lengths = combine_sequences(cv_train_idx, self.sequences)
-                test, test_lengths = combine_sequences(cv_test_idx, self.sequences)                      
-                try:
-                    trained_model = (GaussianHMM(n_components=n,n_iter=1000,random_state=self.random_state)
-                                    .fit(train,train_lengths))
-                    score += trained_model.score(test,test_lengths)
-                    count += 1
-                except:
-                    pass 
-            if count > 0:
-                avg_score = score / count
-                if avg_score > best_score:
-                    best_model = GaussianHMM(n_components=n,n_iter=1000).fit(self.X,self.lengths)
-                    best_score = avg_score
+            try:
+                for cv_train_idx, cv_test_idx in split_method.split(self.sequences):
+                    train, train_lengths = combine_sequences(cv_train_idx, self.sequences)
+                    test, test_lengths = combine_sequences(cv_test_idx, self.sequences)                      
+                    try:
+                        trained_model = (GaussianHMM(n_components=n,n_iter=1000,random_state=self.random_state)
+                                        .fit(train,train_lengths))
+                        score += trained_model.score(test,test_lengths)
+                        count += 1
+                    except:
+                        pass 
+                if count > 0:
+                    avg_score = score / count
+                    if avg_score > best_score:
+                        best_model = GaussianHMM(n_components=n,n_iter=1000).fit(self.X,self.lengths)
+                        best_score = avg_score
+            except:
+                pass
         return best_model
     
         # TODO implement model selection using CV
