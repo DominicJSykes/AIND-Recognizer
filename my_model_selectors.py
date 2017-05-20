@@ -32,9 +32,9 @@ class ModelSelector(object):
         raise NotImplementedError
 
     def base_model(self, num_states):
-        # with warnings.catch_warnings():
+        
         warnings.filterwarnings("ignore", category=DeprecationWarning)
-        # warnings.filterwarnings("ignore", category=RuntimeWarning)
+        
         try:
             hmm_model = GaussianHMM(n_components=num_states, covariance_type="diag", n_iter=1000,
                                     random_state=self.random_state, verbose=False).fit(self.X, self.lengths)
@@ -44,6 +44,7 @@ class ModelSelector(object):
         except:
             if self.verbose:
                 print("failure on {} with {} states".format(self.this_word, num_states))
+                
             return None
 
 
@@ -78,27 +79,34 @@ class SelectorBIC(ModelSelector):
         :return: GaussianHMM object
         """
         
+        #DS - Implemented function to select best model as chosen by BIC. 
+        
         warnings.filterwarnings("ignore", category=DeprecationWarning)
         warnings.filterwarnings("ignore", category=RuntimeWarning)
         
+        #Create variables
         best_score = float("inf")
         best_model = None    
+        
+        #Train a model for each value of components to be tested.
         for n in range(self.min_n_components,self.max_n_components + 1):
             try:
                 model = GaussianHMM(n_components=n,n_iter=1000,random_state=self.random_state).fit(self.X,self.lengths)
+                
+                #Calculate BIC score
                 logL = model.score(self.X,self.lengths)
                 logN = math.log(len(self.X))
                 p = n * n + 2 * n * len(self.X[0]) - 1
                 BIC = -2 * logL + p * logN
+                
+                #If score higher than current best score update the best model and best score.
                 if BIC < best_score:
                     best_model = model
                     best_score = BIC
             except:
-                pass        
+                pass   
+            
         return best_model
-        # TODO implement model selection based on BIC scores
-        raise NotImplementedError
-
 
 class SelectorDIC(ModelSelector):
     ''' select best model based on Discriminative Information Criterion
@@ -114,29 +122,36 @@ class SelectorDIC(ModelSelector):
         warnings.filterwarnings("ignore", category=DeprecationWarning)
         warnings.filterwarnings("ignore", category=RuntimeWarning)
         
+        #DS - Implemented function to select best model using DIC score.
+        
+        #Create variables
         best_score = float("-inf")
-        best_model = None                     
+        best_model = None     
+        
+        #Create word data without the current test word as a list for use in DIC calculation later.
         other_words = self.hwords.copy()
         del other_words[self.this_word]
         words = [self.hwords[word] for word in other_words]
+        
+        #Train a model for each value of components to be tested.
         for n in range(self.min_n_components,self.max_n_components + 1):
-            antiLogL = 0.0
-            wc = 0
             try:
                 model = GaussianHMM(n_components=n,n_iter=1000,random_state=self.random_state).fit(self.X,self.lengths)
                 logL = model.score(self.X,self.lengths)
             except:
                 continue 
+                
+            #Calculate number of needed parameters and DIC score
             p = n * n + 2 * n * len(self.X) - 1
             DIC =  logL - np.mean(sum([model.score(self.hwords[word][0],self.hwords[word][1]) 
                    for word in other_words]))
+            
+            #If DIC score is better than current best score, update best model and best score
             if DIC > best_score:
                 best_model = model
-                best_score = DIC       
+                best_score = DIC   
+                
         return best_model
-        # TODO implement model selection based on DIC scores
-        raise NotImplementedError
-
 
 class SelectorCV(ModelSelector):
     ''' select best model based on average log Likelihood of cross-validation folds
@@ -147,15 +162,21 @@ class SelectorCV(ModelSelector):
         warnings.filterwarnings("ignore", category=DeprecationWarning)
         warnings.filterwarnings("ignore", category=RuntimeWarning)
         
+        #Implemented a function to select the best model using Cross-Validation.
+        
+        #Create variables
         best_score = float("-inf")
         best_model = None
+        
+        #Create KFold objecct
         if len(self.sequences) < 3:
             split_method = KFold(n_splits=2)
         else:
             split_method = KFold()
+        
+        #Train a model for each value of components to be tested across each fold.
         for n in range(self.min_n_components,self.max_n_components + 1):   
-            score = 0
-            count = 0
+            scores = []
             try:
                 for cv_train_idx, cv_test_idx in split_method.split(self.sequences):
                     train, train_lengths = combine_sequences(cv_train_idx, self.sequences)
@@ -163,18 +184,18 @@ class SelectorCV(ModelSelector):
                     try:
                         trained_model = (GaussianHMM(n_components=n,n_iter=1000,random_state=self.random_state)
                                         .fit(train,train_lengths))
-                        score += trained_model.score(test,test_lengths)
-                        count += 1
+                        scores.append(trained_model.score(test,test_lengths))
                     except:
                         pass 
-                if count > 0:
-                    avg_score = score / count
+                    
+                #If model training successful test if score is higher than the best score so far, and update model
+                #and best score accordingly.
+                if len(scores) > 0:
+                    avg_score = np.mean(scores)
                     if avg_score > best_score:
                         best_model = GaussianHMM(n_components=n,n_iter=1000).fit(self.X,self.lengths)
                         best_score = avg_score
             except:
                 pass
+            
         return best_model
-    
-        # TODO implement model selection using CV
-        raise NotImplementedError
